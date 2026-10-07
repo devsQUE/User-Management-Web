@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  />
+
+  <title>TVS Credit User Manager</title>
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+
+  <!-- =========================
+       LOGIN SCREEN
+  ========================== -->
+  <section id="loginScreen" class="login-screen">
+
+    <div class="login-card">
+
+      <div class="brand">
+        <div class="brand-icon">T</div>
+
+        <div>
+          <h1>TVS Credit</h1>
+          <span>User Manager</span>
+        </div>
+      </div>
+
+      <div class="login-heading">
+        <h2>Admin Login</h2>
+        <p>Sign in to manage users and access.</p>
+      </div>
+
+      <form id="loginForm">
+
+        <div class="form-group">
+          <label for="adminEmail">Email</label>
+
+          <input
+            type="email"
+            id="adminEmail"
+            placeholder="Enter admin email"
+            autocomplete="username"
+            required
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="adminPassword">Password</label>
+
+          <div class="password-wrapper">
+            <input
+              type="password"
+              id="adminPassword"
+              placeholder="Enter password"
+              autocomplete="current-password"
+              required
+            />
+
+            <button
+              type="button"
+              id="togglePassword"
+              class="password-toggle"
+              aria-label="Show password"
+            >
+              Show
+            </button>
+          </div>
+        </div>
+
+        <div
+          id="loginError"
+          class="error-message"
+          hidden
+        ></div>
+
+        <button
+          type="submit"
+          id="loginBtn"
+          class="primary-btn login-btn"
+        >
+          Sign In
+        </button>
+
+      </form>
+
+      <div class="login-footer">
+        <span>TVS Credit Assistant</span>
+        <strong>devsQUE</strong>
+      </div>
+
+    </div>
+
+  </section>
+
+
+  <!-- =========================
+       ADMIN DASHBOARD
+  ========================== -->
+  <section id="dashboardScreen" class="dashboard-screen" hidden>
+
+    <!-- HEADER -->
+    <header class="dashboard-header">
+
+      <div class="header-brand">
+
+        <div class="brand-icon small">
+          T
+        </div>
+
+        <div>
+          <h1>TVS Credit</h1>
+          <span>User Manager</span>
+        </div>
+
+      </div>
+
+      <div class="header-actions">
+
+        <div class="admin-info">
+          <span>Signed in as</span>
+          <strong id="adminEmailDisplay">
+            Admin
+          </strong>
+        </div>
+
+        <button
+          type="button"
+          id="logoutBtn"
+          class="logout-btn"
+        >
+          Logout
+        </button>
+
+      </div>
+
+    </header>
+
+
+    <!-- MAIN CONTENT -->
+    <main class="dashboard-content">
+
+      <!-- PAGE TITLE -->
+      <div class="page-heading">
+
+        <div>
+          <h2>Users</h2>
+          <p>
+            Manage TVS Credit Assistant users and their access.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          id="addUserBtn"
+          class="primary-btn"
+        >
+          + Add User
+        </button>
+
+      </div>
+
+
+      <!-- STAT CARDS -->
+      <div class="stats-grid">
+
+        <div class="stat-card">
+
+          <div class="stat-label">
+            Total Users
+          </div>
+
+          <div
+            id="totalUsers"
+            class="stat-value"
+          >
+            0
+          </div>
+
+        </div>
+
+        <div class="stat-card">
+
+          <div class="stat-label">
+            Active Users
+          </div>
+
+          <div
+            id="activeUsers"
+            class="stat-value"
+          >
+            0
+          </div>
+
+        </div>
+
+        <div class="stat-card">
+
+          <div class="stat-label">
+            Disabled Users
+          </div>
+
+          <div
+            id="disabledUsers"
+            class="stat-value"
+          >
+            0
+          </div>
+
+        </div>
+
+      </div>
+
+
+      <!-- USERS TABLE -->
+      <div class="users-card">
+
+        <div class="card-header">
+
+          <div>
+            <h3>User Accounts</h3>
+            <p>
+              Add, edit, disable or remove users.
+            </p>
+          </div>
+
+          <div class="table-search">
+
+            <input
+              type="search"
+              id="userSearch"
+              placeholder="Search users..."
+            />
+
+          </div>
+
+        </div>
+
+
+        <div class="table-wrapper">
+
+          <table class="users-table">
+
+            <thead>
+
+<tr>
+  <th>User</th>
+  <th>Username</th>
+  <th>Email</th>
+  <th>Status</th>
+  <th>Login Status</th>
+  <th>Last Login</th>
+  <th>Created</th>
+  <th class="actions-column">Actions</th>
+</tr>
+
+            </thead>
+
+            <tbody id="usersTableBody">
+
+              <!-- Users will be loaded here -->
+
+              <tr id="emptyUsersRow">
+
+                <td
+                  colspan="8"
+                  class="empty-state"
+                >
+                  No users found.
+                </td>
+
+              </tr>
+
+            </tbody>
+
+          </table>
+
+        </div>
+
+      </div>
+
+    </main>
+
+
+    <!-- =========================
+         ADD / EDIT USER MODAL
+    ========================== -->
+    <div
+      id="userModal"
+      class="modal"
+      hidden
+    >
+
+      <div class="modal-overlay"></div>
+
+      <div class="modal-card">
+
+        <div class="modal-header">
+
+          <div>
+            <h2 id="modalTitle">
+              Add User
+            </h2>
+
+            <p id="modalDescription">
+              Create a new TVS Credit Assistant user.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            id="closeModalBtn"
+            class="close-btn"
+            aria-label="Close"
+          >
+            ×
+          </button>
+
+        </div>
+
+
+        <form id="userForm">
+
+          <input
+            type="hidden"
+            id="editingUserId"
+          />
+
+
+          <div class="form-group">
+
+            <label for="userName">
+              User Name
+            </label>
+
+            <input
+              type="text"
+              id="userName"
+              placeholder="Enter user name"
+              required
+            />
+
+          </div>
+
+
+          <div class="form-group">
+
+            <label for="userEmail">
+              Email
+            </label>
+
+            <input
+              type="email"
+              id="userEmail"
+              placeholder="Enter user email"
+              required
+            />
+
+          </div>
+
+
+          <div class="form-group">
+
+            <label for="userId">
+              User ID
+            </label>
+
+            <input
+              type="text"
+              id="userId"
+              placeholder="Enter user ID"
+              required
+            />
+
+          </div>
+
+
+          <div class="form-group">
+
+            <label for="userPassword">
+              Password
+            </label>
+
+            <input
+              type="password"
+              id="userPassword"
+              placeholder="Enter password"
+            />
+
+            <small id="passwordHint">
+              Required when creating a new user.
+            </small>
+
+          </div>
+
+
+          <div class="form-group">
+
+            <label for="userStatus">
+              Status
+            </label>
+
+            <select id="userStatus">
+
+              <option value="active">
+                Active
+              </option>
+
+              <option value="disabled">
+                Disabled
+              </option>
+
+            </select>
+
+          </div>
+
+
+          <div
+            id="userFormError"
+            class="error-message"
+            hidden
+          ></div>
+
+
+          <div class="modal-actions">
+
+            <button
+              type="button"
+              id="cancelUserBtn"
+              class="secondary-btn"
+            >
+              Cancel
+            </button>
+
+            <button
+              type="submit"
+              id="saveUserBtn"
+              class="primary-btn"
+            >
+              Create User
+            </button>
+
+          </div>
+
+        </form>
+
+      </div>
+
+    </div>
+
+
+    <!-- =========================
+         DELETE CONFIRMATION
+    ========================== -->
+    <div
+      id="deleteModal"
+      class="modal"
+      hidden
+    >
+
+      <div class="modal-overlay"></div>
+
+      <div class="confirm-card">
+
+        <div class="confirm-icon">
+          !
+        </div>
+
+        <h2>Delete User?</h2>
+
+        <p>
+          This will permanently remove the user account.
+        </p>
+
+        <strong id="deleteUserName">
+          User
+        </strong>
+
+        <div class="modal-actions">
+
+          <button
+            type="button"
+            id="cancelDeleteBtn"
+            class="secondary-btn"
+          >
+            Cancel
+          </button>
+
+          <button
+            type="button"
+            id="confirmDeleteBtn"
+            class="danger-btn"
+          >
+            Delete User
+          </button>
+
+        </div>
+
+      </div>
+
+    </div>
+
+  </section>
+
+
+  <!-- JavaScript -->
+  <script src="app.js"></script>
+
+</body>
+</html>
