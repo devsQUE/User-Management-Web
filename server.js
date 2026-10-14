@@ -1001,6 +1001,30 @@ app.use((req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
+// ========================================
+// SERVER SELF-HEARTBEAT
+// ========================================
+
+const SELF_URL = process.env.RENDER_EXTERNAL_URL;
+
+if (SELF_URL) {
+  setInterval(async () => {
+    try {
+      const response = await fetch(`${SELF_URL}/api/health`);
+
+      console.log(
+        "[Heartbeat] Server status:",
+        response.status
+      );
+    } catch (error) {
+      console.error(
+        "[Heartbeat] Request failed:",
+        error.message
+      );
+    }
+  }, 5 * 60 * 1000);
+}
+
 /* =========================================
    START SERVER
 ========================================= */
