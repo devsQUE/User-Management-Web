@@ -14,11 +14,45 @@ const API_BASE = "/api";
 // STATE
 // ============================================
 
+const ADMIN_SESSION_KEY = "tvsAdminSession";
+
 let accessToken = null;
+let refreshToken = null;
+let sessionExpiresAt = 0;
 let currentUser = null;
 let users = [];
 let editingUserId = null;
 let deletingUserId = null;
+
+function saveAdminSession(session) {
+  accessToken = session.access_token;
+  refreshToken = session.refresh_token || refreshToken;
+
+  sessionExpiresAt = session.expires_at
+    ? Number(session.expires_at) * 1000
+    : Date.now() + Number(session.expires_in || 3600) * 1000;
+
+  currentUser = session.user || currentUser;
+
+  localStorage.setItem(
+    ADMIN_SESSION_KEY,
+    JSON.stringify({
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      expires_at: sessionExpiresAt,
+      user: currentUser,
+    }),
+  );
+}
+
+function clearAdminSession() {
+  accessToken = null;
+  refreshToken = null;
+  sessionExpiresAt = 0;
+  currentUser = null;
+
+  localStorage.removeItem(ADMIN_SESSION_KEY);
+}
 
 // ============================================
 // ELEMENTS
@@ -238,14 +272,59 @@ async function adminLogin(email, password) {
 // API REQUEST
 // ============================================
 
-async function apiRequest(endpoint, options = {}) {
+async function refreshAdminSession() {
+  if (!refreshToken) {
+    clearAdminSession();
+    return false;
+  }
+
+  try {
+    const response = await fetch(
+      `${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: SUPABASE_PUBLISHABLE_KEY,
+        },
+        body: JSON.stringify({
+          refresh_token: refreshToken,
+        }),
+      },
+    );
+
+    const data = await response.json();
+
+    if (!response.ok || !data.access_token) {
+      clearAdminSession();
+      return false;
+    }
+
+    saveAdminSession(data);
+    return true;
+  } catch (error) {
+    console.error("[User Manager] Token refresh failed:", error);
+    return false;
+  }
+}
+
+async function apiRequest(endpoint, options = {}, retry = true) {
   if (!accessToken) {
     throw new Error("Admin session is missing.");
   }
 
+  // Refresh shortly before the access token expires.
+  if (sessionExpiresAt && Date.now() >= sessionExpiresAt - 60_000) {
+    const refreshed = await refreshAdminSession();
+
+    if (!refreshed) {
+      showLogin();
+      throw new Error("Your session expired. Please sign in again.");
+    }
+  }
+
   const headers = {
     ...(options.headers || {}),
-
     Authorization: `Bearer ${accessToken}`,
   };
 
@@ -266,13 +345,19 @@ async function apiRequest(endpoint, options = {}) {
     data = {};
   }
 
+  // Retry once if the access token has expired.
+  if (response.status === 401 && retry) {
+    const refreshed = await refreshAdminSession();
+
+    if (refreshed) {
+      return apiRequest(endpoint, options, false);
+    }
+  }
+
   if (response.status === 401) {
-    accessToken = null;
-    currentUser = null;
-
+    clearAdminSession();
     showLogin();
-
-    throw new Error(data.message || "Admin session is invalid or expired.");
+    throw new Error(data.message || "Your session has expired.");
   }
 
   if (!response.ok) {
@@ -314,11 +399,9 @@ loginForm?.addEventListener("submit", async function (event) {
 
     const session = await adminLogin(email, password);
 
-    accessToken = session.access_token;
+    saveAdminSession(session);
 
-    currentUser = session.user || {
-      email,
-    };
+    currentUser = session.user || { email };
 
     console.log("[User Manager] Supabase login successful.");
 
@@ -377,8 +460,7 @@ togglePassword?.addEventListener("click", function () {
 // ============================================
 
 function logout() {
-  accessToken = null;
-  currentUser = null;
+  clearAdminSession();
   users = [];
   editingUserId = null;
   deletingUserId = null;
@@ -428,45 +510,26 @@ async function loadUsers() {
 // ============================================
 
 function renderUsers() {
+  if (!usersTableBody) {
+    return;
+  }
 
-    if (!usersTableBody) {
-        return;
-    }
+  const search = userSearch?.value.trim().toLowerCase() || "";
 
-    const search =
-        userSearch?.value
-            .trim()
-            .toLowerCase() || "";
+  const filtered = users.filter(function (user) {
+    const name = String(user.name || "").toLowerCase();
 
-    const filtered =
-        users.filter(function (user) {
+    const email = String(user.email || "").toLowerCase();
 
-            const name =
-                String(
-                    user.name || ""
-                ).toLowerCase();
+    const uid = String(user.userId || "").toLowerCase();
 
-            const email =
-                String(
-                    user.email || ""
-                ).toLowerCase();
+    return (
+      name.includes(search) || email.includes(search) || uid.includes(search)
+    );
+  });
 
-            const uid =
-                String(
-                    user.userId || ""
-                ).toLowerCase();
-
-            return (
-                name.includes(search) ||
-                email.includes(search) ||
-                uid.includes(search)
-            );
-        });
-
-
-    if (!filtered.length) {
-
-        usersTableBody.innerHTML = `
+  if (!filtered.length) {
+    usersTableBody.innerHTML = `
             <tr>
                 <td
                     colspan="8"
@@ -477,39 +540,26 @@ function renderUsers() {
             </tr>
         `;
 
-        return;
-    }
+    return;
+  }
 
+  usersTableBody.innerHTML = filtered
+    .map(function (user) {
+      const status = user.status === "disabled" ? "disabled" : "active";
 
-    usersTableBody.innerHTML =
-        filtered.map(function (user) {
+      const loginStatus =
+        status === "disabled"
+          ? "disabled"
+          : user.loginStatus === "active"
+            ? "active"
+            : "logged-out";
 
-            const status =
-                user.status === "disabled"
-                    ? "disabled"
-                    : "active";
+      const initial = String(user.name || user.userId || "U")
+        .trim()
+        .charAt(0)
+        .toUpperCase();
 
-
-            const loginStatus =
-                status === "disabled"
-                    ? "disabled"
-                    : user.loginStatus === "active"
-                        ? "active"
-                        : "logged-out";
-
-
-            const initial =
-                String(
-                    user.name ||
-                    user.userId ||
-                    "U"
-                )
-                    .trim()
-                    .charAt(0)
-                    .toUpperCase();
-
-
-            return `
+      return `
                 <tr>
 
                     <!-- USER -->
@@ -523,9 +573,7 @@ function renderUsers() {
                             <div class="user-info">
 
                                 <div class="user-name">
-                                    ${escapeHTML(
-                                        user.name || "-"
-                                    )}
+                                    ${escapeHTML(user.name || "-")}
                                 </div>
 
                                 <div class="user-id-small">
@@ -541,9 +589,7 @@ function renderUsers() {
                     <!-- USERNAME -->
                     <td>
                         <span class="username-text">
-                            ${escapeHTML(
-                                user.userId || "-"
-                            )}
+                            ${escapeHTML(user.userId || "-")}
                         </span>
                     </td>
 
@@ -551,9 +597,7 @@ function renderUsers() {
                     <!-- EMAIL -->
                     <td>
                         <span class="email-text">
-                            ${escapeHTML(
-                                user.email || "-"
-                            )}
+                            ${escapeHTML(user.email || "-")}
                         </span>
                     </td>
 
@@ -565,11 +609,7 @@ function renderUsers() {
                         >
                             <span class="status-dot"></span>
 
-                            ${
-                                status === "active"
-                                    ? "Active"
-                                    : "Disabled"
-                            }
+                            ${status === "active" ? "Active" : "Disabled"}
                         </span>
                     </td>
 
@@ -582,11 +622,11 @@ function renderUsers() {
                             <span class="status-dot"></span>
 
                             ${
-                                loginStatus === "active"
-                                    ? "Logged In"
-                                    : loginStatus === "disabled"
-                                        ? "Disabled"
-                                        : "Logged Out"
+                              loginStatus === "active"
+                                ? "Logged In"
+                                : loginStatus === "disabled"
+                                  ? "Disabled"
+                                  : "Logged Out"
                             }
                         </span>
                     </td>
@@ -596,15 +636,13 @@ function renderUsers() {
                     <td>
                         <div class="date-cell">
                             ${
-                                user.lastSignInAt
-                                    ? `
+                              user.lastSignInAt
+                                ? `
                                         <span class="date-main">
-                                            ${formatDateTime(
-                                                user.lastSignInAt
-                                            )}
+                                            ${formatDateTime(user.lastSignInAt)}
                                         </span>
                                     `
-                                    : `
+                                : `
                                         <span class="never-login">
                                             Never
                                         </span>
@@ -618,9 +656,7 @@ function renderUsers() {
                     <td>
                         <div class="date-cell">
                             <span class="date-main">
-                                ${formatDate(
-                                    user.createdAt
-                                )}
+                                ${formatDate(user.createdAt)}
                             </span>
                         </div>
                     </td>
@@ -635,9 +671,7 @@ function renderUsers() {
                                 type="button"
                                 class="action-btn edit"
                                 data-action="edit"
-                                data-id="${escapeHTML(
-                                    user.id
-                                )}"
+                                data-id="${escapeHTML(user.id)}"
                                 title="Edit user"
                                 aria-label="Edit user"
                             >
@@ -659,9 +693,7 @@ function renderUsers() {
                                 type="button"
                                 class="action-btn logout-user"
                                 data-action="logout"
-                                data-id="${escapeHTML(
-                                    user.id
-                                )}"
+                                data-id="${escapeHTML(user.id)}"
                                 title="Log out user"
                                 aria-label="Log out user"
                             >
@@ -686,9 +718,7 @@ function renderUsers() {
                                 type="button"
                                 class="action-btn delete"
                                 data-action="delete"
-                                data-id="${escapeHTML(
-                                    user.id
-                                )}"
+                                data-id="${escapeHTML(user.id)}"
                                 title="Delete user"
                                 aria-label="Delete user"
                             >
@@ -720,8 +750,8 @@ function renderUsers() {
 
                 </tr>
             `;
-
-        }).join("");
+    })
+    .join("");
 }
 
 // ============================================
@@ -747,32 +777,24 @@ function formatDate(value) {
 }
 
 function formatDateTime(value) {
+  if (!value) {
+    return "-";
+  }
 
-    if (!value) {
-        return "-";
-    }
+  const date = new Date(value);
 
-    const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "-";
+  }
 
-    if (
-        Number.isNaN(
-            date.getTime()
-        )
-    ) {
-        return "-";
-    }
-
-    return date.toLocaleString(
-        "en-IN",
-        {
-            day: "2-digit",
-            month: "short",
-            year: "numeric",
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: true
-        }
-    );
+  return date.toLocaleString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
 }
 
 // ============================================
@@ -1153,9 +1175,64 @@ deleteModal?.addEventListener("click", function (event) {
 });
 
 // ============================================
-// INITIAL STATE
+// INITIAL STATE & SESSION RESTORE
 // ============================================
 
-showLogin();
+async function restoreAdminSession() {
+  showLogin();
+
+  try {
+    const saved = localStorage.getItem(ADMIN_SESSION_KEY);
+
+    if (!saved) {
+      return;
+    }
+
+    const session = JSON.parse(saved);
+
+    if (!session.access_token || !session.refresh_token) {
+      clearAdminSession();
+      return;
+    }
+
+    accessToken = session.access_token;
+    refreshToken = session.refresh_token;
+    sessionExpiresAt = Number(session.expires_at || 0);
+    currentUser = session.user || null;
+
+    // Refresh an expired or nearly expired token.
+    if (
+      !sessionExpiresAt ||
+      Date.now() >= sessionExpiresAt - 60_000
+    ) {
+      const refreshed = await refreshAdminSession();
+
+      if (!refreshed) {
+        showLogin();
+        return;
+      }
+    }
+
+    const result = await apiRequest("/users");
+
+    users = Array.isArray(result.users) ? result.users : [];
+
+    renderUsers();
+    updateStats();
+
+    if (adminEmailDisplay) {
+      adminEmailDisplay.textContent = currentUser?.email || "";
+    }
+
+    showDashboard();
+
+    console.log("[User Manager] Session restored successfully.");
+  } catch (error) {
+    console.error("[User Manager] Session restore failed:", error);
+    showLogin();
+  }
+}
+
+restoreAdminSession();
 
 console.log("[TVS Credit User Manager] app.js loaded successfully.");
